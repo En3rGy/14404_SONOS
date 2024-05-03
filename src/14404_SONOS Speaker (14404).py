@@ -4,6 +4,10 @@ import socket
 import urllib2
 import xml.etree.ElementTree as ET
 import urlparse
+import json
+import re
+import HTMLParser
+
 
 ##!!!!##################################################################################################
 #### Own written code can be placed above this commentblock . Do not change or delete commentblock! ####
@@ -15,25 +19,23 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
     def __init__(self, homeserver_context):
         hsl20_4.BaseModule.__init__(self, homeserver_context, "hsl20_3_SonosSpeaker")
         self.FRAMEWORK = self._get_framework()
-        self.LOGGER = self._get_logger(hsl20_4.LOGGING_NONE, ())
-        self.PIN_I_SSPEAKERIP = 1
-        self.PIN_I_NSPEAKERPORT = 2
-        self.PIN_I_NVOLUME = 3
-        self.PIN_I_BPLAY = 4
-        self.PIN_I_BPAUSE = 5
-        self.PIN_I_BPREVIOUS = 6
-        self.PIN_I_BNEXT = 7
-        self.PIN_I_SPLAYLIST = 8
-        self.PIN_I_SRADIO = 9
-        self.PIN_I_SJOINRINCON = 10
-        self.PIN_O_OUT = 1
+        self.LOGGER = self._get_logger(hsl20_4.LOGGING_NONE,())
+        self.PIN_I_SSPEAKERIP=1
+        self.PIN_I_NVOLUME=2
+        self.PIN_I_BPLAY=3
+        self.PIN_I_BPAUSE=4
+        self.PIN_I_BPREVIOUS=5
+        self.PIN_I_BNEXT=6
+        self.PIN_I_SPLAYLIST=7
+        self.PIN_I_SRADIO=8
+        self.PIN_I_SJOINRINCON=9
+        self.PIN_O_OUT=1
 
-    ########################################################################################################
-    #### Own written code can be placed after this commentblock . Do not change or delete commentblock! ####
-    ###################################################################################################!!!##
+########################################################################################################
+#### Own written code can be placed after this commentblock . Do not change or delete commentblock! ####
+###################################################################################################!!!##
 
-        self.location = str()
-        self.rincon = str()
+        self.speaker = SonosPlayer()
 
     def set_output_value_sbc(self, pin, val):
         if pin in self.g_out_sbc:
@@ -80,16 +82,17 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         :rtype: str, str
         :return: error message, ip
         """
+        print("Entering discovery...")
 
         host_ip = self.FRAMEWORK.get_homeserver_private_ip()
         MCAST_PORT = 1900
         MCAST_GRP = ('239.255.255.250', MCAST_PORT)
 
-        message_header = "M-SEARCH * HTTP/1.1\r\n";
-        message_host = "HOST: 239.255.255.250:1900\r\n";
-        message_man = "MAN: \"ssdp:discover\"\r\n";
-        message_mx = "MX: 8\r\n";
-        message_st = "ST: urn:schemas-upnp-org:device:ZonePlayer:1\r\n";
+        message_header = "M-SEARCH * HTTP/1.1\r\n"
+        message_host = "HOST: 239.255.255.250:1900\r\n"
+        message_man = "MAN: \"ssdp:discover\"\r\n"
+        message_mx = "MX: 8\r\n"
+        message_st = "ST: urn:schemas-upnp-org:device:ZonePlayer:1\r\n"
 
         msg = message_header + message_host + message_man + message_mx + message_st + "\r\n"
 
@@ -104,41 +107,53 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         if bytes_send != len(msg):
             self.log_msg("Something wrong here, send bytes not equal provided bytes")
 
+        sonos_system = []
         while True:
             try:
                 response = sock.recv(1024)
-                # print(response)
 
                 if "SONOS" in response.upper():
-                    lines = response.split('\n')
-                    for line in lines:
-                        if line.startswith('LOCATION:'):
-                            location = line.split(': ')[1].strip()
-                            if urlparse.urlparse(location).hostname == self._get_input_value(self.PIN_I_SSPEAKERIP):
-                                self.location = location
-                            else:
-                                continue
+                    player = SonosPlayer()
+                    player.rincon = re.search("USN: uuid:(.*?):", response, re.MULTILINE).group(1)
+                    player.location = re.search("LOCATION: (.*?)\n", response, re.MULTILINE).group(1)
+                    player.ip = urlparse.urlparse(player.location).hostname
+                    player.port = urlparse.urlparse(player.location).port
 
-                        if line.startswith('USN:'):
-                            usn = line.split(': ')[1].strip()
-                            self.rincon = usn.split(':')[1].strip()
-                            break  # for-loop
+                    sonos_system.append(player)
 
-                    if self.location:
-                        break  # while loop
+                    player.get_data()
+
+                    if player.ip == self._get_input_value(self.PIN_I_SSPEAKERIP):
+                        self.speaker = player
+                        # break  # while loop
+                    else:
+                        continue
 
             except socket.timeout:
                 break
 
         sock.close()
-        self.log_data("RINCON", self.rincon)
-        self.log_data("Location", self.location)
+        self.log_data("RINCON", self.speaker.rincon)
+        self.log_data("Location", self.speaker.location)
 
-    def http_put(self, api_path, api_action, payload):
+    def _http_put(self, api_path, api_action, payload):
+        """
+        Perform an HTTP PUT request.
+
+        :param api_path: The API path for the request.
+        :type api_path: str
+        :param api_action: The action to perform.
+        :type api_action: str
+        :param payload: The payload to send with the request.
+        :type payload: str
+        :return: The response data from the server.
+        :rtype: str
+        """
+        print("Entering http_put...")
         http_client = None
 
         ip = self._get_input_value(self.PIN_I_SSPEAKERIP)
-        port = self._get_input_value(self.PIN_I_NSPEAKERPORT)
+        port = self.speaker.port
         try:
             headers = {"CONNECTION": "close",
                        "HOST": "{}:{}".format(ip, port),
@@ -149,154 +164,309 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
             http_client.request("POST", api_path, payload, headers)
             response = http_client.getresponse()
             status = response.status
-            print(response.read())
-            # self.DEBUG.set_value('10034 response', response.read())
-            self.log_data('status', status)
+            data = response.read()
+
             if str(status) != '200':
-                return False
+                upnp_error = re.search("<errorCode>(.*?)</errorCode>", data, re.MULTILINE).group(1)
+                self.log_msg('http_put | Http status {}, upnp error code {} for {}'.format(status,
+                                                                                           upnp_error, api_action))
+                data = str()
             else:
-                return True
+                self.log_msg('http_put | Http status {}'.format(status))
+
         except Exception as e:
             self.log_msg(str(e))
-            # data = {'status':500,'auth':'failed'}
-            return False
+            data = str()
         finally:
             if http_client:
                 http_client.close()
 
+        return data
+
     def set_mute(self, do_set_mute):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering set_mute...")
         api_action = '"urn:schemas-upnp-org:service:RenderingControl:1#SetMute"'
         data = get_data_str('<u:SetMute xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">'
                             '<InstanceID>0</InstanceID><Channel>Master</Channel><DesiredMute>{}</DesiredMute>'
                             '</u:SetMute>'.format(int(do_set_mute)))
 
-        return self.http_put("/MediaRenderer/AVTransport/Control", api_action, data)
+        return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data) != str()
 
     def clear_queue(self):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering clear_queue...")
         api_action = '"urn:schemas-upnp-org:service:AVTransport:1#RemoveAllTracksFromQueue"'
         data = get_data_str('<u:RemoveAllTracksFromQueue xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
                             '<InstanceID>0</InstanceID></u:RemoveAllTracksFromQueue>')
 
-        return self.http_put("/MediaRenderer/AVTransport/Control", api_action, data)
+        return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data) != str()
+
+    def browse(self, search):
+        """
+        :return: Server reply.
+        :rtype: str
+        """
+        print("Entering browse...")
+        service_type = "urn:schemas-upnp-org:service:ContentDirectory:1"
+        action_name = "Browse"
+
+        api_action = '"{}#{}"'.format(service_type, action_name)
+        data = get_data_str('<u:{a} xmlns:u="{b}">'.format(a=action_name, b=service_type) +
+                            '<ObjectID>{}</ObjectID>'.format(search) +
+                            '<BrowseFlag>BrowseDirectChildren</BrowseFlag>' +
+                            '<Filter>*</Filter>' +
+                            '<StartingIndex>0</StartingIndex>' +
+                            '<RequestedCount>0</RequestedCount>' +
+                            '<SortCriteria>+upnp:artist,+dc:title</SortCriteria>' +
+                            '</u:{}>'.format(action_name))
+
+        return self._http_put("/MediaServer/ContentDirectory/Control", api_action, data)
+
+    def _unencode(self, text):
+        result = text.replace('&lt;', '<')
+        result = result.replace('&gt;', '>')
+        result = result.replace('&quot;', '"')
+        result = result.replace('&apos;', "'")
+        result = result.replace('&amp;', '&')
+        return result
+
+    def _encode(self, text):
+        result = text.replace('&', '&amp;')
+        # result = re.sub(r'&(?!amp;)', '&amp;', text)
+        result = result.replace('<', '&lt;')
+        result = result.replace('>', '&gt;')
+        result = result.replace('"', '&quot;')
+        result = result.replace("'", '&apos;')
+        return result
+
+    def _get_favorites(self, data):
+        """
+        :return: List of dictionaries of favorites meta data: [{'uri': '', 'title': '', 'meta_data': ''}]
+        :rtype: List
+        """
+        print("Entering _get_favorites...")
+        favorites_list = []
+        res = re.search("<Result>(.*?)</Result>", data)
+        if res == None:
+            return favorites_list
+        res = res.group(1)
+        result = self._unencode(res)
+
+        favorites = re.findall("<item.*?>(.*?)</item>", result)
+        for favorite in favorites:
+            fav = {}
+            title = re.search("<dc:title>(.*?)</dc:title>", favorite, re.MULTILINE)
+            if title is not None:
+                title = self._unencode(title.group(1))
+                fav["title"] = title
+            uri = re.search("<res.*?>(.*?)</res>", favorite, re.MULTILINE)
+            if uri is not None:
+                uri = self._unencode(uri.group(1))
+                fav["uri"] = uri
+            uri_md = re.search("<r:resMD>(.*?)</r:resMD>", favorite, re.MULTILINE)
+            if uri_md is not None:
+                fav["meta_data"] = uri_md.group(1)
+
+            favorites_list.append(fav)
+
+        return favorites_list
+
+    def get_fav_data(self, fav_list, fav_name):
+        """
+        :return: Dictionary of meta data of requested favorite, e.g. {'uri': '', 'title': '', 'meta_data': ''}
+        :rtype: Dictionary
+        """
+        print("Entering get_fav_data...")
+        for fav in fav_list:
+            if ("title" in fav) and ("uri" in fav) and ("meta_data" in fav):
+                if fav_name == fav["title"]:
+                    return fav
+
+        return {}
 
     def select_fst_track(self, ):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering select_fst_track...")
         api_action = '"urn:schemas-upnp-org:service:AVTransport:1#Seek"'
         data = get_data_str('<u:Seek xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
-                            '<InstanceID>0</InstanceID><Unit>TRACK_NR</Unit><Target>1</Target></u:Seek>')
+                            '<InstanceID>0</InstanceID>'
+                            '<Unit>TRACK_NR</Unit>'
+                            '<Target>1</Target>'
+                            '</u:Seek>')
 
-        return self.http_put("/MediaRenderer/AVTransport/Control", api_action, data)
+        return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data) != str()
 
-    def set_playlist_active(self, ):
-        if self.rincon is str():
+    def set_playlist_active(self):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering set_playlist_active...")
+        if self.speaker.rincon == str():
             self.discovery()
 
-        api_action = '"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"'
-        data = get_data_str('<u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
-                            '<InstanceID>0</InstanceID><CurrentURI>x-rincon-queue:{}'
-                            '</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>'
-                            '</u:SetAVTransportURI>'.format(self.rincon))
-
-        return self.http_put("/MediaRenderer/AVTransport/Control", api_action, data)
+        return self.set_av_transport_uri("x-rincon-queue:{}#0".format(self.speaker.rincon), str()) != str()
 
     # Playlist Children
-    def set_playlist(self, data):
+    def set_playlist(self, uri, meta_data):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering set_playlist...")
         api_action = '"urn:schemas-upnp-org:service:AVTransport:1#AddURIToQueue"'
-        str_list = str.split(data, "*")
 
-        if len(str_list) != 2:
-            return False
+        data = get_data_str('<u:AddURIToQueue xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
+                            '<InstanceID>0</InstanceID>'
+                            '<EnqueuedURI>{}</EnqueuedURI>'
+                            '<EnqueuedURIMetaData>{}</EnqueuedURIMetaData>'
+                            '<DesiredFirstTrackNumberEnqueued>1</DesiredFirstTrackNumberEnqueued>'
+                            '<EnqueueAsNext>1</EnqueueAsNext>'
+                            '</u:AddURIToQueue>'.format(uri, meta_data))
 
-        # <u:AddURIToQueue xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-        #   <InstanceID>0</InstanceID>
-        #   <EnqueuedURI>x-rincon-playlist:RINCON_949F3E71146601400#A:GENRE/Children&apos;s</EnqueuedURI>
-        #   <EnqueuedURIMetaData>???
-        #   </EnqueuedURIMetaData>
-        #   <DesiredFirstTrackNumberEnqueued>1</DesiredFirstTrackNumberEnqueued>
-        #   <EnqueueAsNext>1</EnqueueAsNext>
-        #   </u:AddURIToQueue>'
+        return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data) != str()
 
-        data2 = get_data_str('<u:AddURIToQueue xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
-                             '<InstanceID>0</InstanceID><EnqueuedURI>{}</EnqueuedURI>'
-                             '<EnqueuedURIMetaData>{}</EnqueuedURIMetaData>'
-                             '<DesiredFirstTrackNumberEnqueued>1</DesiredFirstTrackNumberEnqueued>'
-                             '<EnqueueAsNext>1</EnqueueAsNext>'
-                             '</u:AddURIToQueue>'.format(str_list[0], str_list[1]))
-
-        return self.http_put("/MediaRenderer/AVTransport/Control", api_action, data2)
-
-    def set_play_mode_shuffle_no_repeat(self, ):
+    def set_play_mode_shuffle_no_repeat(self):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering set_play_mode_shuffle_no_repeat...")
         api_action = '"urn:schemas-upnp-org:service:AVTransport:1#SetPlayMode"'
         data = get_data_str('<u:SetPlayMode xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
-                            '<InstanceID>0</InstanceID><NewPlayMode>SHUFFLE_NOREPEAT</NewPlayMode>'
+                            '<InstanceID>0</InstanceID>'
+                            '<NewPlayMode>SHUFFLE_NOREPEAT</NewPlayMode>'
                             '</u:SetPlayMode>')
 
-        return self.http_put("/MediaRenderer/AVTransport/Control", api_action, data)
+        return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data) != str()
 
     def play(self):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering play...")
         api_action = '"urn:schemas-upnp-org:service:AVTransport:1#Play"'
         data = get_data_str('<u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
-                            '<InstanceID>0</InstanceID><Speed>1</Speed></u:Play>')
+                            '<InstanceID>0</InstanceID>'
+                            '<Speed>1</Speed>'
+                            '</u:Play>')
 
-        return self.http_put("/MediaRenderer/AVTransport/Control", api_action, data)
+        return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data) != str()
 
     def play_next(self):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering play_next...")
         api_action = '"urn:schemas-upnp-org:service:AVTransport:1#Next"'
         data = get_data_str('<u:Next xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
-                            '<InstanceID>0</InstanceID></u:Next>')
+                            '<InstanceID>0</InstanceID>'
+                            '</u:Next>')
 
-        return self.http_put("/MediaRenderer/AVTransport/Control", api_action, data)
+        return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data) != str()
 
     def play_previous(self):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering play_previous...")
         api_action = '"urn:schemas-upnp-org:service:AVTransport:1#Previous"'
         data = get_data_str('<u:Previous xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
-                            '<InstanceID>0</InstanceID></u:Previous>')
+                            '<InstanceID>0</InstanceID>'
+                            '</u:Previous>')
 
-        return self.http_put("/MediaRenderer/AVTransport/Control", api_action, data)
+        return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data) != str()
 
     def pause(self):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering pause...")
         api_action = '"urn:schemas-upnp-org:service:AVTransport:1#Pause"'
         data = get_data_str('<u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
-                            '<InstanceID>0</InstanceID></u:Pause>')
+                            '<InstanceID>0</InstanceID>'
+                            '</u:Pause>')
 
-        return self.http_put("/MediaRenderer/AVTransport/Control", api_action, data)
+        return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data) != str()
 
     def set_volume(self, volume):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering set_volume...")
         api_action = '"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"'
         data = get_data_str('<u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">'
-                            '<InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>{}'
-                            '</DesiredVolume></u:SetVolume>'.format(volume))
+                            '<InstanceID>0</InstanceID>'
+                            '<Channel>Master</Channel>'
+                            '<DesiredVolume>{}</DesiredVolume>'
+                            '</u:SetVolume>'.format(volume))
 
-        # return self.http_put("/MediaRenderer/RenderingControl/Control HTTP/1.1", api_action, data)
-        return self.http_put("/MediaRenderer/RenderingControl/Control", api_action, data)
+        return self._http_put("/MediaRenderer/RenderingControl/Control", api_action, data) != str()
 
-    def play_radio(self, data):
+    def set_av_transport_uri(self, uri, uri_meta_data):
+        """
+        :return: Server reply.
+        :rtype: str
+        """
+        print("Entering set_av_transport_uri...")
+        encoded_uri = self._encode(self._unencode(uri))
+        encoded_uri_meta_data = self._encode(self._unencode(uri_meta_data))
         api_action = '"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"'
-        str_list = str.split(data, "*")
+        data = get_data_str('<u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
+                            '<InstanceID>0</InstanceID>'
+                            '<CurrentURI>{}</CurrentURI>'
+                            '<CurrentURIMetaData>{}</CurrentURIMetaData>'
+                            '</u:SetAVTransportURI>'.format(encoded_uri, encoded_uri_meta_data))
 
-        if len(str_list) != 2:
-            return False
+        # print("set_av_transport_uri | ...\n- api_action: {}\n- data:       {}".format(api_action, data))
 
-        data2 = get_data_str('<u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
-                             '<InstanceID>0</InstanceID><CurrentURI>{}</CurrentURI>'
-                             '<CurrentURIMetaData>{}</CurrentURIMetaData>'
-                             '</u:SetAVTransportURI>'.format(str_list[0], str_list[1]))
+        return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data)
 
-        ret = self.http_put("/MediaRenderer/AVTransport/Control", api_action, data2)
+    def play_radio(self, uri, uri_meta_data):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering play_radio...")
+        self.set_av_transport_uri(uri, uri_meta_data)
+        return self.play()
 
-        if ret:
-            return self.play()
-
-    def play_playlist(self, data):
+    def play_playlist(self, uri, meta_data):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering play_playlist...")
         ret = self.clear_queue()
         if not ret:
+            print("play_playlist | Error clear_queue")
             return False
 
-        ret = self.set_playlist(data)
+        print("play_playlist | ###\n{}\n{}\n###".format(uri, meta_data))
+
+        ret = self.set_playlist(uri, meta_data)
         if not ret:
+            print("play_playlist | Error set_playlist")
             return False
 
         ret = self.set_playlist_active()
         if not ret:
+            print("play_playlist | Error set_playlist_active")
             return False
 
         ret = self.set_play_mode_shuffle_no_repeat()
@@ -310,15 +480,17 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         return self.play()
 
     def join_rincon(self, rincon):
-        api_action = '"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"'
-        data = get_data_str('<u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
-                            '<InstanceID>0</InstanceID><CurrentURI>x-rincon:RINCON_{}</CurrentURI>'
-                            '<CurrentURIMetaData></CurrentURIMetaData></u:SetAVTransportURI>'.format(rincon))
-
-        return self.http_put("/MediaRenderer/AVTransport/Control HTTP/1.1", api_action, data)
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering join_rincon...")
+        self.set_av_transport_uri("x-rincon:RINCON_{}".format(rincon), str())
+        return self.play()
 
     def on_init(self):
         self.DEBUG = self.FRAMEWORK.create_debug_section()
+        self.discovery()
 
     def on_input_value(self, index, value):
 
@@ -343,10 +515,20 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
             res = self.play_previous()
 
         elif (index == self.PIN_I_SPLAYLIST) and (bool(value)):
-            res = self.play_playlist(self._get_input_value(self.PIN_I_SPLAYLIST))
+            ret = self.browse("R:0/2")
+            favorites = self._get_favorites(ret)
+            fav_data = self.get_fav_data(favorites, self._get_input_value(self.PIN_I_SPLAYLIST))
+            uri = fav_data["uri"]
+            meta_data = fav_data["meta_data"]
+            res = self.play_playlist(uri, meta_data)
 
         elif (index == self.PIN_I_SRADIO) and (bool(value)):
-            res = self.play_radio(self._get_input_value(self.PIN_I_SRADIO))
+            ret = self.browse("R:0/2")
+            favorites = self._get_favorites(ret)
+            fav_data = self.get_fav_data(favorites, self._get_input_value(self.PIN_I_SRADIO))
+            uri = fav_data["uri"]
+            meta_data = fav_data["meta_data"]
+            res = self.play_radio(uri, meta_data)
 
         elif index == self.PIN_I_NVOLUME:
             res = self.set_volume(value)
@@ -360,6 +542,91 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 
 def get_data_str(command):
     data = '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" ' \
-           's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>' \
-           '{}</s:Body></s:Envelope>'.format(command)
+           's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">' \
+           '<s:Body>{}</s:Body>' \
+           '</s:Envelope>'.format(command)
     return data
+
+
+class SonosPlayer:
+    def __init__(self):
+        self.location = str()
+        self.ip = str()
+        self.rincon = str()
+        self.port = 0
+        self.services = {}
+
+    def read_device(self, xml_device_root):
+        # print("Entering SonosPlayer::read_device...")
+        device_dict = {}
+        for device in xml_device_root.findall("{urn:schemas-upnp-org:device-1-0}device"):
+            udn = device.findtext("{urn:schemas-upnp-org:device-1-0}UDN")
+            device_dict[udn] = {}
+            device_dict[udn]["friendly_name"] = device.findtext("{urn:schemas-upnp-org:device-1-0}friendlyName")
+            icon = device.find("{urn:schemas-upnp-org:device-1-0}iconList")
+            if icon is not None:
+                icon = icon.find("{urn:schemas-upnp-org:device-1-0}icon")
+                device_dict[udn]["icon_url"] = icon.findtext("{urn:schemas-upnp-org:device-1-0}url")
+
+            service_list = device.find("{urn:schemas-upnp-org:device-1-0}serviceList")
+            if service_list is not None:
+                for service in service_list.findall("{urn:schemas-upnp-org:device-1-0}service"):
+                    service_id = service.findtext("{urn:schemas-upnp-org:device-1-0}serviceId")
+                    device_dict[udn][service_id] = {}
+                    device_dict[udn][service_id]["service_url"] = \
+                        service.findtext("{urn:schemas-upnp-org:device-1-0}SCPDURL")
+                    device_dict[udn][service_id]["control_url"] = \
+                        service.findtext("{urn:schemas-upnp-org:device-1-0}controlURL")
+                    device_dict[udn][service_id]["service_type"] = \
+                        service.findtext("{urn:schemas-upnp-org:device-1-0}serviceType")
+
+            device_list = device.find("{urn:schemas-upnp-org:device-1-0}deviceList")
+            if device_list is not None:
+                child_device_dict = self.read_device(device_list)
+                for child in child_device_dict.keys():
+                    device_dict[udn][child] = child_device_dict[child]
+
+        return device_dict
+
+    def get_data(self, path=str()):
+        # print("Entering SonosPlayer::get_data...")
+        if path is str():
+            path = self.location
+
+        try:
+            response = urllib2.urlopen(path)
+            data = response.read()
+
+            xml_root = ET.fromstring(data)
+            self.read_device(xml_root)
+
+        except Exception as e:
+            print("get_data | {}".format(e))
+
+    def get_scpd_url(self, service_id):
+        print("Entering SonosPlayer::get_scpd_url...")
+        # < serviceType > urn:schemas - upnp - org:service:ContentDirectory:1 < / serviceType >
+        # < serviceId > urn:upnp - org:serviceId:ContentDirectory < / serviceId >
+        # < controlURL > / MediaServer / ContentDirectory / Control < / controlURL >
+        # < eventSubURL > / MediaServer / ContentDirectory / Event < / eventSubURL >
+        # < SCPDURL > / xml / ContentDirectory1.xml < / SCPDURL >
+
+        try:
+
+            response = urllib2.urlopen(self.get_url())
+            data = response.read()
+
+            xml_root = ET.fromstring(data)
+            device = xml_root.find("{urn:schemas-upnp-org:device-1-0}device")
+            friendly_name = device.findtext("{urn:schemas-upnp-org:device-1-0}friendlyName")
+            icon = device.find("{urn:schemas-upnp-org:device-1-0}iconList")
+            icon = icon.find("{urn:schemas-upnp-org:device-1-0}icon")
+            icon_url = icon.findtext("{urn:schemas-upnp-org:device-1-0}url")
+            # print("get_scpd_url | {}\t{}".format(friendly_name, self.get_url(icon_url)))
+
+        except Exception as e:
+            print("get_scpd_url | {}".format(e))
+
+    def get_url(self, path):
+        # print("Entering SonosPlayer::get_url...")
+        return "http://{}:{}{}".format(self.ip, self.port, path)

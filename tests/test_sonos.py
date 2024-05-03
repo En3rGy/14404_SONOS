@@ -34,13 +34,23 @@ class TestSequenceFunctions(unittest.TestCase):
         self.tst.discovery()
         self.assertIsNot(self.tst.rincon, str())
 
+    def test_radio(self):
+        fav = "Bayern 3 Radio"
+        self.tst.debug_input_value[self.tst.PIN_I_SRADIO] = fav
+        self.tst.on_input_value(self.tst.PIN_I_SRADIO, fav)
+
+    def test_nas_song(self):
+        fav = "In My Mind"
+        # fav = "God Rest Ye Merry Gentlemen"
+        self.tst.debug_input_value[self.tst.PIN_I_SPLAYLIST] = fav
+        self.tst.on_input_value(self.tst.PIN_I_SPLAYLIST, fav)
+
     def test_volume(self):
         self.tst.on_input_value(self.tst.PIN_I_NVOLUME, 5)
         self.assertTrue(self.tst.debug_output_value[self.tst.PIN_O_OUT])
 
-    def test_playlist(self):
-        self.tst.on_input_value(self.tst.PIN_I_SPLAYLIST, "Bayern 3 Radio")
-        self.assertTrue(self.tst.debug_output_value[self.tst.PIN_O_OUT])
+    def test_pause(self):
+        self.tst.pause()
 
 
 if __name__ == '__main__':

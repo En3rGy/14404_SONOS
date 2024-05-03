@@ -4,8 +4,7 @@
         <module category="Sonos" context="hsl20_3_SonosSpeaker" id="14404" name="SONOS Speaker (14404)" version="0.6">
             <inputs>
                 <input type="string" const_name="sSpeakerIp" init_value="">Speaker IP</input>
-                <input type="number" const_name="nSpeakerPort" init_value="1400">Speaker Port</input>
-				<input type="number" const_name="nVolume" init_value="0">Volume</input>
+ 				<input type="number" const_name="nVolume" init_value="0">Volume</input>
                 <input type="number" const_name="bPlay" init_value="0">Play</input>
                 <input type="number" const_name="bPause" init_value="0">Pause</input>
                 <input type="number" const_name="bPrevious" init_value="0">Previous</input>
