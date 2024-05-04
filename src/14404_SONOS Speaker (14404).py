@@ -4,10 +4,8 @@ import socket
 import urllib2
 import xml.etree.ElementTree as ET
 import urlparse
-import json
+import threading
 import re
-import HTMLParser
-
 
 ##!!!!##################################################################################################
 #### Own written code can be placed above this commentblock . Do not change or delete commentblock! ####
@@ -20,7 +18,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         hsl20_4.BaseModule.__init__(self, homeserver_context, "hsl20_3_SonosSpeaker")
         self.FRAMEWORK = self._get_framework()
         self.LOGGER = self._get_logger(hsl20_4.LOGGING_NONE,())
-        self.PIN_I_SSPEAKERIP=1
+        self.PIN_I_SPEAKER_NAME=1
         self.PIN_I_NVOLUME=2
         self.PIN_I_BPLAY=3
         self.PIN_I_BPAUSE=4
@@ -47,10 +45,10 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         self.g_out_sbc[pin] = val
 
     def log_msg(self, text):
-        self.DEBUG.add_message("14403: {}".format(text))
+        self.DEBUG.add_message("14403 | {}: {}".format(self._get_input_value(self.PIN_I_SPEAKER_NAME), text))
 
     def log_data(self, key, value):
-        self.DEBUG.set_value("14403 {}".format(key), str(value))
+        self.DEBUG.set_value("14403 | {}: {}".format(self._get_input_value(self.PIN_I_SPEAKER_NAME), key), str(value))
 
     def hex2int(msg):
         """
@@ -107,6 +105,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         if bytes_send != len(msg):
             self.log_msg("Something wrong here, send bytes not equal provided bytes")
 
+        global sonos_system
         sonos_system = []
         while True:
             try:
@@ -119,22 +118,51 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
                     player.ip = urlparse.urlparse(player.location).hostname
                     player.port = urlparse.urlparse(player.location).port
 
-                    sonos_system.append(player)
-
                     player.get_data()
 
-                    if player.ip == self._get_input_value(self.PIN_I_SSPEAKERIP):
-                        self.speaker = player
-                        # break  # while loop
-                    else:
-                        continue
+                    sonos_system.append(player)
 
             except socket.timeout:
                 break
 
         sock.close()
+        self.log_msg("Discovered {} SONOS devices: {}".format(len(sonos_system),
+                                                              ", ".join(speaker.name for speaker in sonos_system)))
+
+    def get_speaker_data(self):
+        """
+        Gets the metadata for the current player
+
+        :return:
+        """
+        self._get_speaker_data()
+
+        if self.speaker.rincon == str():
+            self.discovery()
+            self._get_speaker_data()
+            if self.speaker.rincon == str():
+                self.log_msg("Speaker not found. Is ist offline?")
+
         self.log_data("RINCON", self.speaker.rincon)
         self.log_data("Location", self.speaker.location)
+
+    def _get_speaker_data(self):
+        """
+        Gets the metadata for the current player
+
+        :return:
+        """
+        global sonos_system
+        if 'sonos_system' not in globals():
+            self.discovery()
+
+        for speaker in sonos_system:
+            if speaker.name == self._get_input_value(self.PIN_I_SPEAKER_NAME):
+                self.speaker = speaker
+                self.speaker.get_data()
+                break
+            else:
+                continue
 
     def _http_put(self, api_path, api_action, payload):
         """
@@ -152,8 +180,12 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         print("Entering http_put...")
         http_client = None
 
-        ip = self._get_input_value(self.PIN_I_SSPEAKERIP)
+        ip = self.speaker.ip
         port = self.speaker.port
+
+        if port == str():
+            self.get_speaker_data()
+
         try:
             headers = {"CONNECTION": "close",
                        "HOST": "{}:{}".format(ip, port),
@@ -490,17 +522,18 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 
     def on_init(self):
         self.DEBUG = self.FRAMEWORK.create_debug_section()
-        self.discovery()
+
+        global sonos_system
+
+        if 'sonos_system' not in globals():
+            sonos_system = []
+            self.discovery()
+
+        self.get_speaker_data()
 
     def on_input_value(self, index, value):
 
-        ip = self._get_input_value(self.PIN_I_SSPEAKERIP)
-        port = self._get_input_value(self.PIN_I_NSPEAKERPORT)
         res = False
-
-        if (ip == "") or (port == 0):
-            self._set_output_value(self.PIN_O_SOUT, "IP or Port not set.")
-            return
 
         if (index == self.PIN_I_BNEXT) and (bool(value)):
             res = self.play_next()
@@ -548,6 +581,9 @@ def get_data_str(command):
     return data
 
 
+global sonos_system
+
+
 class SonosPlayer:
     def __init__(self):
         self.location = str()
@@ -555,6 +591,10 @@ class SonosPlayer:
         self.rincon = str()
         self.port = 0
         self.services = {}
+        self.name = str()
+
+    def __str__(self):
+        return self.name
 
     def read_device(self, xml_device_root):
         # print("Entering SonosPlayer::read_device...")
@@ -563,6 +603,7 @@ class SonosPlayer:
             udn = device.findtext("{urn:schemas-upnp-org:device-1-0}UDN")
             device_dict[udn] = {}
             device_dict[udn]["friendly_name"] = device.findtext("{urn:schemas-upnp-org:device-1-0}friendlyName")
+            self.name = re.search("(.*?) -", device_dict[udn]["friendly_name"]).group(1)
             icon = device.find("{urn:schemas-upnp-org:device-1-0}iconList")
             if icon is not None:
                 icon = icon.find("{urn:schemas-upnp-org:device-1-0}icon")
@@ -589,6 +630,12 @@ class SonosPlayer:
         return device_dict
 
     def get_data(self, path=str()):
+        """
+        Gets the speakers meta data from the location url
+
+        :param path:
+        :return:
+        """
         # print("Entering SonosPlayer::get_data...")
         if path is str():
             path = self.location
@@ -605,11 +652,6 @@ class SonosPlayer:
 
     def get_scpd_url(self, service_id):
         print("Entering SonosPlayer::get_scpd_url...")
-        # < serviceType > urn:schemas - upnp - org:service:ContentDirectory:1 < / serviceType >
-        # < serviceId > urn:upnp - org:serviceId:ContentDirectory < / serviceId >
-        # < controlURL > / MediaServer / ContentDirectory / Control < / controlURL >
-        # < eventSubURL > / MediaServer / ContentDirectory / Event < / eventSubURL >
-        # < SCPDURL > / xml / ContentDirectory1.xml < / SCPDURL >
 
         try:
 

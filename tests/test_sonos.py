@@ -25,14 +25,30 @@ class TestSequenceFunctions(unittest.TestCase):
             self.cred = json.load(f)
 
         self.tst = SONOSSpeaker_14404_14404(0)
-        self.tst.debug_input_value[self.tst.PIN_I_SSPEAKERIP] = self.cred["IP"]
-        self.tst.debug_input_value[self.tst.PIN_I_NSPEAKERPORT] = "1400"
+        self.tst.debug_input_value[self.tst.PIN_I_SPEAKER_NAME] = self.cred["IP"]
 
         self.tst.on_init()
 
     def test_discovery(self):
-        self.tst.discovery()
-        self.assertIsNot(self.tst.rincon, str())
+        global sonos_system
+        for speaker in sonos_system:
+            print speaker
+
+    def test_init_and_discovery(self):
+        self.assertTrue(self.tst.speaker.rincon != str())
+
+        self.tst = SONOSSpeaker_14404_14404(0)
+        self.tst.debug_input_value[self.tst.PIN_I_SPEAKER_NAME] = "No Name"
+        self.tst.on_init()
+        self.assertTrue(self.tst.speaker.rincon == str())
+
+    def test_two_instances(self):
+        self.assertTrue(self.tst.speaker.rincon != str())
+
+        tst2 = SONOSSpeaker_14404_14404(0)
+        tst2.debug_input_value[self.tst.PIN_I_SPEAKER_NAME] = self.cred["IP2"]
+        tst2.on_init()
+        self.assertTrue(tst2.speaker.rincon != str())
 
     def test_radio(self):
         fav = "Bayern 3 Radio"

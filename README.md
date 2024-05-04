@@ -37,7 +37,7 @@ Alle Ausgänge sind Send-by-Change ausgeführt.
 
 ### Change Log
 
-- v00.06: Initial
+See [release notes](https://github.com/En3rGy/14404_SONOS/releases)
 
 ### Open Issues / Known Bugs
 
@@ -45,12 +45,12 @@ Alle Ausgänge sind Send-by-Change ausgeführt.
 
 ### Support
 
-Für Fehlermeldungen oder Feature-Wünsche, bitte [github issues](https://github.com/En3rGy/14401_FeiertageFerien/issues) nutzen.
+Für Fehlermeldungen oder Feature-Wünsche, bitte [github issues](https://github.com/En3rGy/14404_SONOS/issues) nutzen.
 Fragen am besten als Thread im [knx-user-forum.de](https://knx-user-forum.de) stellen. Dort finden sich ggf. bereits Diskussionen und Lösungen.
 
 ## Code
 
-Der Code des Bausteins befindet sich in der hslz Datei oder auf [github](https://github.com/En3rGy/14401_FeiertageFerien).
+Der Code des Bausteins befindet sich in der hslz Datei oder auf [github](https://github.com/En3rGy/14404_SONOS).
 
 ### Entwicklungsumgebung
 
