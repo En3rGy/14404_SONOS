@@ -18,7 +18,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         hsl20_4.BaseModule.__init__(self, homeserver_context, "hsl20_3_SonosSpeaker")
         self.FRAMEWORK = self._get_framework()
         self.LOGGER = self._get_logger(hsl20_4.LOGGING_NONE,())
-        self.PIN_I_SPEAKER_NAME=1
+        self.PIN_I_ROOM_NAME=1
         self.PIN_I_NVOLUME=2
         self.PIN_I_BPLAY=3
         self.PIN_I_BPAUSE=4
@@ -45,10 +45,10 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         self.g_out_sbc[pin] = val
 
     def log_msg(self, text):
-        self.DEBUG.add_message("14403 | {}: {}".format(self._get_input_value(self.PIN_I_SPEAKER_NAME), text))
+        self.DEBUG.add_message("14403 | {}: {}".format(self._get_input_value(self.PIN_I_ROOM_NAME), text))
 
     def log_data(self, key, value):
-        self.DEBUG.set_value("14403 | {}: {}".format(self._get_input_value(self.PIN_I_SPEAKER_NAME), key), str(value))
+        self.DEBUG.set_value("14403 | {}: {}".format(self._get_input_value(self.PIN_I_ROOM_NAME), key), str(value))
 
     def hex2int(msg):
         """
@@ -157,7 +157,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
             self.discovery()
 
         for speaker in sonos_system:
-            if speaker.name == self._get_input_value(self.PIN_I_SPEAKER_NAME):
+            if speaker.name == self._get_input_value(self.PIN_I_ROOM_NAME):
                 self.speaker = speaker
                 self.speaker.get_data()
                 break
@@ -551,6 +551,9 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
             ret = self.browse("R:0/2")
             favorites = self._get_favorites(ret)
             fav_data = self.get_fav_data(favorites, self._get_input_value(self.PIN_I_SPLAYLIST))
+            if fav_data is {}:
+                self.log_msg("Favorite '{}' not found".format(self._get_input_value(self.PIN_I_SPLAYLIST)))
+                return
             uri = fav_data["uri"]
             meta_data = fav_data["meta_data"]
             res = self.play_playlist(uri, meta_data)
@@ -559,6 +562,9 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
             ret = self.browse("R:0/2")
             favorites = self._get_favorites(ret)
             fav_data = self.get_fav_data(favorites, self._get_input_value(self.PIN_I_SRADIO))
+            if fav_data is {}:
+                self.log_msg("Favorite '{}' not found".format(self._get_input_value(self.PIN_I_SRADIO)))
+                return
             uri = fav_data["uri"]
             meta_data = fav_data["meta_data"]
             res = self.play_radio(uri, meta_data)
@@ -603,7 +609,8 @@ class SonosPlayer:
             udn = device.findtext("{urn:schemas-upnp-org:device-1-0}UDN")
             device_dict[udn] = {}
             device_dict[udn]["friendly_name"] = device.findtext("{urn:schemas-upnp-org:device-1-0}friendlyName")
-            self.name = re.search("(.*?) -", device_dict[udn]["friendly_name"]).group(1)
+            device_dict[udn]["roomName"] = device.findtext("{urn:schemas-upnp-org:device-1-0}roomName")
+            self.name = device_dict[udn]["roomName"]
             icon = device.find("{urn:schemas-upnp-org:device-1-0}iconList")
             if icon is not None:
                 icon = icon.find("{urn:schemas-upnp-org:device-1-0}icon")
@@ -648,7 +655,7 @@ class SonosPlayer:
             self.read_device(xml_root)
 
         except Exception as e:
-            print("get_data | {}".format(e))
+            print("get_data | Error: {}".format(e))
 
     def get_scpd_url(self, service_id):
         print("Entering SonosPlayer::get_scpd_url...")
@@ -660,14 +667,14 @@ class SonosPlayer:
 
             xml_root = ET.fromstring(data)
             device = xml_root.find("{urn:schemas-upnp-org:device-1-0}device")
-            friendly_name = device.findtext("{urn:schemas-upnp-org:device-1-0}friendlyName")
-            icon = device.find("{urn:schemas-upnp-org:device-1-0}iconList")
-            icon = icon.find("{urn:schemas-upnp-org:device-1-0}icon")
-            icon_url = icon.findtext("{urn:schemas-upnp-org:device-1-0}url")
+            # friendly_name = device.findtext("{urn:schemas-upnp-org:device-1-0}friendlyName")
+            # icon = device.find("{urn:schemas-upnp-org:device-1-0}iconList")
+            # icon = icon.find("{urn:schemas-upnp-org:device-1-0}icon")
+            # icon_url = icon.findtext("{urn:schemas-upnp-org:device-1-0}url")
             # print("get_scpd_url | {}\t{}".format(friendly_name, self.get_url(icon_url)))
 
         except Exception as e:
-            print("get_scpd_url | {}".format(e))
+            print("get_scpd_url | Error: {}".format(e))
 
     def get_url(self, path):
         # print("Entering SonosPlayer::get_url...")
