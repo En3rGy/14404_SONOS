@@ -125,6 +125,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
                 break
 
         sock.close()
+
         self.log_msg("Discovered {} SONOS devices: {}".format(len(sonos_system),
                                                               ", ".join(speaker.name for speaker in sonos_system)))
 
@@ -609,6 +610,11 @@ class SonosPlayer:
             device_dict[udn] = {}
             device_dict[udn]["friendly_name"] = device.findtext("{urn:schemas-upnp-org:device-1-0}friendlyName")
             device_dict[udn]["roomName"] = device.findtext("{urn:schemas-upnp-org:device-1-0}roomName")
+
+            if device_dict[udn]["roomName"] is None:
+                # Valid for Media Renderer oder Media Server devices
+                continue
+
             self.name = device_dict[udn]["roomName"]
             icon = device.find("{urn:schemas-upnp-org:device-1-0}iconList")
             if icon is not None:
