@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
     <modules>
-        <module category="Sonos" context="hsl20_3_SonosSpeaker" id="14404" name="SONOS Speaker (14404)" version="0.7">
+        <module category="Sonos" context="14404_SonosSpeaker" id="14404" name="SONOS Speaker (14404)" version="0.7">
             <inputs>
                 <input type="string" const_name="room_name" init_value="">Room Name</input>
  				<input type="number" const_name="nVolume" init_value="0">Volume</input>

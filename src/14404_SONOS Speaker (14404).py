@@ -15,7 +15,7 @@ import re
 class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 
     def __init__(self, homeserver_context):
-        hsl20_4.BaseModule.__init__(self, homeserver_context, "hsl20_3_SonosSpeaker")
+        hsl20_4.BaseModule.__init__(self, homeserver_context, "14404_SonosSpeaker")
         self.FRAMEWORK = self._get_framework()
         self.LOGGER = self._get_logger(hsl20_4.LOGGING_NONE,())
         self.PIN_I_ROOM_NAME=1
