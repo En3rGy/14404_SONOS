@@ -8,17 +8,16 @@ Die .hslz Datei mit dem Gira Experte importieren. Das Logikmodul ist dann in der
 
 ## Eingänge
 
-| Nr. | Eingang      | Initwert | Beschreibung                    |
-|-----|--------------|----------|---------------------------------|
-| 1   | Speaker IP   |          | IP des jew. SONOS Lautsprechers |
-| 2   | Volume       | 0        | Lautstärke in %                 | 
-| 3   | Play         | 0        | 1 Startet die Wiedergabe        |
-| 4   | Pause        | 0        | 1 kommandiert "Pause"           | 
-| 5   | Previous     | 0        | 1 spielt den vorherigen Track   |
-| 6   | Next         | 0        | 1 spielt den nächsten Track     |
-| 7   | Playlist     |          | Name der Sonos Playlist         |
-| 8   | Radio        |          | Name des Radiosenders           |
-| 9   | Join RINCON  |          |                                 |
+| Nr. | Eingang              | Initwert | Beschreibung                            |
+|-----|----------------------|----------|-----------------------------------------|
+| 1   | Speaker IP           |          | IP des jew. SONOS Lautsprechers         |
+| 2   | Volume               | 0        | Lautstärke in %                         | 
+| 3   | Play (1) / Pause (0) | 0        | 1 Startet die Wiedergabe, 0 pasiert sie |
+| 4   | Previous             | 0        | 1 spielt den vorherigen Track           |
+| 5   | Next                 | 0        | 1 spielt den nächsten Track             |
+| 6   | Playlist             |          | Name der Sonos Playlist                 |
+| 7   | Radio                |          | Name des Radiosenders                   |
+| 8   | Join RINCON          |          |                                         |
 
 
 ## Ausgänge

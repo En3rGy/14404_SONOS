@@ -20,13 +20,12 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         self.LOGGER = self._get_logger(hsl20_4.LOGGING_NONE,())
         self.PIN_I_ROOM_NAME=1
         self.PIN_I_NVOLUME=2
-        self.PIN_I_BPLAY=3
-        self.PIN_I_BPAUSE=4
-        self.PIN_I_BPREVIOUS=5
-        self.PIN_I_BNEXT=6
-        self.PIN_I_SPLAYLIST=7
-        self.PIN_I_SRADIO=8
-        self.PIN_I_SJOINRINCON=9
+        self.PIN_I_PLAY=3
+        self.PIN_I_BPREVIOUS=4
+        self.PIN_I_BNEXT=5
+        self.PIN_I_SPLAYLIST=6
+        self.PIN_I_SRADIO=7
+        self.PIN_I_SJOINRINCON=8
         self.PIN_O_OUT=1
 
 ########################################################################################################
@@ -538,11 +537,11 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         if (index == self.PIN_I_BNEXT) and (bool(value)):
             res = self.play_next()
 
-        elif (index == self.PIN_I_BPAUSE) and (bool(value)):
-            res = self.pause()
-
-        elif (index == self.PIN_I_BPLAY) and (bool(value)):
-            res = self.play()
+        elif index == self.PIN_I_PLAY:
+            if value:
+                res = self.play()
+            else:
+                res = self.pause()
 
         elif (index == self.PIN_I_BPREVIOUS) and (bool(value)):
             res = self.play_previous()
