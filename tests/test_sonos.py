@@ -25,20 +25,20 @@ class TestSequenceFunctions(unittest.TestCase):
             self.cred = json.load(f)
 
         self.tst = SONOSSpeaker_14404_14404(0)
-        self.tst.debug_input_value[self.tst.PIN_I_ROOM_NAME] = self.cred["ROOM1"]
+        self.tst.debug_input_value[self.tst.PIN_I_RINCON] = self.cred["ROOM1"]
 
         self.tst.on_init()
 
     def test_discovery(self):
         global sonos_system
         for speaker in sonos_system:
-            print speaker
+            print (speaker)
 
     def test_init_and_discovery(self):
         self.assertTrue(self.tst.speaker.rincon != str())
 
         self.tst = SONOSSpeaker_14404_14404(0)
-        self.tst.debug_input_value[self.tst.PIN_I_ROOM_NAME] = "No Name"
+        self.tst.debug_input_value[self.tst.PIN_I_RINCON] = "No Name"
         self.tst.on_init()
         self.assertTrue(self.tst.speaker.rincon == str())
 

@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
     <modules>
-        <module category="Sonos" context="14404_SonosSpeaker" id="14404" name="SONOS Speaker (14404)" version="0.7">
+        <module category="Sonos" context="14404_SonosSpeaker" id="14404" name="SONOS Speaker (14404)" version="0.8">
             <inputs>
-                <input type="string" const_name="room_name" init_value="">Room Name</input>
+                <input type="string" const_name="rincon" init_value="">Speaker RINCON</input>
  				<input type="number" const_name="nVolume" init_value="0">Volume</input>
                 <input type="number" const_name="play" init_value="0">Play (1)/Pause (0)</input>
                 <input type="number" const_name="bPrevious" init_value="0">Previous</input>
