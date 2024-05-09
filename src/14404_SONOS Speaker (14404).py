@@ -174,7 +174,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         :type api_action: str
         :param payload: The payload to send with the request.
         :type payload: str
-        :return: The response data from the server.
+        :return: The response data from the server. str() in case of error.
         :rtype: str
         """
         print("Entering http_put...")
@@ -199,15 +199,20 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
             data = response.read()
 
             if str(status) != '200':
-                upnp_error = re.search("<errorCode>(.*?)</errorCode>", data, re.MULTILINE).group(1)
-                self.log_msg('http_put | Http status {}, upnp error code {} for {}'.format(status,
-                                                                                           upnp_error, api_action))
+                upnp_error = re.search("<errorCode>(.*?)</errorCode>", data, re.MULTILINE)
+                if upnp_error is not None:
+                    self.log_msg('http_put | Http status {}, upnp error code {} for {}'.format(status,
+                                                                                               upnp_error.group(1),
+                                                                                               api_action))
+                else:
+                    self.log_msg("http_put |Http status {} for {}".format(status, api_action))
+
                 data = str()
             else:
                 self.log_msg('http_put | Http status {}'.format(status))
 
         except Exception as e:
-            self.log_msg(str(e))
+            self.log_msg("http_put | Exception: '{}' for {}".format(e, api_action))
             data = str()
         finally:
             if http_client:
@@ -242,7 +247,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 
     def browse(self, search):
         """
-        :return: Server reply.
+        :return: Server reply. str() in case of error.
         :rtype: str
         """
         print("Entering browse...")
@@ -280,7 +285,8 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 
     def _get_favorites(self, data):
         """
-        :return: List of dictionaries of favorites meta data: [{'uri': '', 'title': '', 'meta_data': ''}]
+        :return: List of dictionaries of favorites meta data: [{'uri': '', 'title': '', 'meta_data': ''}].
+                 Returns [] in case of error
         :rtype: List
         """
         print("Entering _get_favorites...")
@@ -520,6 +526,22 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         self.set_av_transport_uri("x-rincon:RINCON_{}".format(rincon), str())
         return self.play()
 
+    def get_favorites_data(self, favorite_name):
+        ret = self.browse("R:0/2")
+        if ret == str():
+            self.log_msg("get_favorites_data | Could not retrieve infos regarding favorites.")
+            return {}
+        favorites = self._get_favorites(ret)
+        if not favorites:
+            self.log_msg("get_favorites_data | Could not retrieve favorites meta data.")
+            return {}
+        fav_data = self.get_fav_data(favorites, favorite_name)
+        if ("uri" not in fav_data) or ("meta_data" not in fav_data):
+            self.log_msg("get_favorites_data | Favorite '{}' not found".format(favorite_name))
+            return {}
+
+        return fav_data
+
     def on_init(self):
         self.DEBUG = self.FRAMEWORK.create_debug_section()
 
@@ -533,50 +555,56 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 
     def on_input_value(self, index, value):
 
-        res = False
-
         if (index == self.PIN_I_BNEXT) and (bool(value)):
-            res = self.play_next()
+            self.play_next()
 
         elif index == self.PIN_I_PLAY:
             if value:
-                res = self.play()
+                self.play()
             else:
-                res = self.pause()
+                self.pause()
 
         elif (index == self.PIN_I_BPREVIOUS) and (bool(value)):
-            res = self.play_previous()
+            self.play_previous()
 
-        elif (index == self.PIN_I_SPLAYLIST) and (bool(value)):
-            ret = self.browse("R:0/2")
-            favorites = self._get_favorites(ret)
-            fav_data = self.get_fav_data(favorites, self._get_input_value(self.PIN_I_SPLAYLIST))
-            if fav_data is {}:
-                self.log_msg("Favorite '{}' not found".format(self._get_input_value(self.PIN_I_SPLAYLIST)))
+        elif index == self.PIN_I_SPLAYLIST:
+            if value == str():
+                self.log_msg("on_input_value | Error with radio input. Is empty. Check input value!")
                 return
+
+            fav_data = self.get_favorites_data(value)
+            if fav_data == {}:
+                return
+
             uri = fav_data["uri"]
             meta_data = fav_data["meta_data"]
-            res = self.play_playlist(uri, meta_data)
+            self.play_playlist(uri, meta_data)
 
-        elif (index == self.PIN_I_SRADIO) and (bool(value)):
-            ret = self.browse("R:0/2")
-            favorites = self._get_favorites(ret)
-            fav_data = self.get_fav_data(favorites, self._get_input_value(self.PIN_I_SRADIO))
-            if fav_data is {}:
-                self.log_msg("Favorite '{}' not found".format(self._get_input_value(self.PIN_I_SRADIO)))
+        elif index == self.PIN_I_SRADIO:
+            if value == str():
+                self.log_msg("on_input_value | Error with radio input. Is empty. Check input value!")
                 return
-            uri = fav_data["uri"]
-            meta_data = fav_data["meta_data"]
-            res = self.play_radio(uri, meta_data)
+
+                fav_data = self.get_favorites_data(value)
+                if fav_data == {}:
+                    return
+
+                uri = fav_data["uri"]
+                meta_data = fav_data["meta_data"]
+                self.play_radio(uri, meta_data)
 
         elif index == self.PIN_I_NVOLUME:
-            res = self.set_volume(value)
+            if int(value) > 0 or int(value) < 100:
+                self.set_volume(value)
+            else:
+                self.log_msg("on_input_value | Error with volume input. Is x < 0 or x > 100. Check input value!")
 
         elif index == self.PIN_I_SJOINRINCON:
-            res = self.join_rincon(self._get_input_value(self.PIN_I_SJOINRINCON))
+            if value == str():
+                self.log_msg("on_input_value | Error with RINCON input. Is empty. Check input value!")
+                return
 
-        self._set_output_value(self.PIN_O_OUT, res)
-        self.log_data("index/success", "{}/{}".format(index, res))
+            self.join_rincon(self._get_input_value(self.PIN_I_SJOINRINCON))
 
 
 def get_data_str(command):
