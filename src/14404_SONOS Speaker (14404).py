@@ -37,7 +37,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
     def set_output_value_sbc(self, pin, val):
         if pin in self.g_out_sbc:
             if self.g_out_sbc[pin] == val:
-                print ("# SBC: pin " + str(pin) + " <- data not send / " + str(val).decode("utf-8"))
+                print ("# SBC: pin " + str(pin) + " <- data not send / " + str(val))
                 return
 
         self._set_output_value(pin, val)
@@ -49,7 +49,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
     def log_data(self, key, value):
         self.DEBUG.set_value("14403 | {}: {}".format(self._get_input_value(self.PIN_I_RINCON), key), str(value))
 
-    def hex2int(msg):
+    def hex2int(self, msg):
         """
 
         :param msg: hex number (e.g. 0x11)
@@ -102,10 +102,11 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         # send data
         bytes_send = sock.sendto(msg, MCAST_GRP)
         if bytes_send != len(msg):
-            raise BaseException("discovery |Something wrong here, send bytes not equal provided bytes")
+            raise Exception("discovery |Something wrong here, send bytes not equal provided bytes")
 
         global sonos_system
-        sonos_system = []
+        if "sonos_system" not in globals():
+            sonos_system = {}
         while True:
             try:
                 response = sock.recv(1024)
@@ -119,15 +120,15 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 
                     player.get_data()
 
-                    sonos_system.append(player)
+                    sonos_system[player.rincon] = player  # does not delete old infos but update them
 
             except socket.timeout:
                 break
 
         sock.close()
 
-        self.log_msg("Discovered {} SONOS devices: {}".format(len(sonos_system),
-                                                              ", ".join(speaker.name for speaker in sonos_system)))
+        self.log_msg("Discovered {} SONOS devices: {}".format(len(sonos_system.keys()),
+                                                              ", ".join(sonos_system[rincon].name for rincon in sonos_system.keys())))
 
     def get_speaker_data(self):
         """
@@ -135,34 +136,30 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 
         :return:
         """
-        self._get_speaker_data()
+        rincon = self._get_input_value(self.PIN_I_RINCON)
 
-        if self.speaker.rincon == str():
-            self.discovery()
-            self._get_speaker_data()
-            if self.speaker.rincon == str():
-                raise BaseException("get_speaker_data | Speaker not found. Is ist offline?")
+        match = re.findall(r'(RINCON_[0-9A-Fa-f]{12}[0-9]{5})', rincon)
+        if len(match) == 0:
+            raise Exception("get_speaker_data | RINCON input has wrong format. Is {} "
+                            "but expecting e.g. RINCON_347E5CF2520201400".format(rincon))
+        # else:
+        #     print("DEBUG | RINCON {} is valid.".format(rincon))
 
-        self.log_data("RINCON", self.speaker.rincon)
-        self.log_data("Location", self.speaker.location)
-
-    def _get_speaker_data(self):
-        """
-        Gets the metadata for the current player
-
-        :return:
-        """
         global sonos_system
         if 'sonos_system' not in globals():
             self.discovery()
 
-        for speaker in sonos_system:
-            if speaker.rincon == self._get_input_value(self.PIN_I_RINCON):
-                self.speaker = speaker
-                self.speaker.get_data()
-                break
-            else:
-                continue
+        if rincon not in sonos_system.keys():
+            self.discovery()
+            if rincon not in sonos_system.keys():
+                raise Exception("get_speaker_data | Speaker not found. Is ist offline?")
+
+        speaker = sonos_system[self._get_input_value(self.PIN_I_RINCON)]
+        self.speaker = speaker
+        self.speaker.get_data()
+
+        self.log_data("RINCON", self.speaker.rincon)
+        self.log_data("Location", self.speaker.location)
 
     def _http_put(self, api_path, api_action, payload):
         """
@@ -183,6 +180,8 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         ip = self.speaker.ip
         port = self.speaker.port
 
+        if ip == str():
+            self.discovery()
         if port == str():
             self.get_speaker_data()
 
@@ -201,19 +200,18 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
             if str(status) != '200':
                 upnp_error = re.search("<errorCode>(.*?)</errorCode>", data, re.MULTILINE)
                 if upnp_error is not None:
-                    raise BaseException('http_put | Http status {}, upnp error code {} for {}'.format(status,
+                    raise Exception('http_put | Http status {}, upnp error code {} for {}'.format(status,
                                                                                         upnp_error.group(1),
                                                                                         api_action))
                 else:
-                    raise BaseException("http_put |Http status {} for {}".format(status, api_action))
-
-                data = str()
+                    raise Exception("http_put |Http status {} for {}".format(status, api_action))
             else:
                 self.log_msg('http_put | Http status {}'.format(status))
 
         except Exception as e:
-            raise BaseException("http_put | Exception: '{}' for {}".format(e, api_action))
-            data = str()
+            self.discovery() #  try to update data
+            # todo Give it one more try before raising the exception?
+            raise Exception("http_put | Exception: '{}' for {}".format(e, api_action))
         finally:
             if http_client:
                 http_client.close()
@@ -492,17 +490,17 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         print("Entering play_playlist...")
         ret = self.clear_queue()
         if not ret:
-            raise BaseException("play_playlist | Error clear_queue")
+            raise Exception("play_playlist | Error clear_queue")
 
         print("play_playlist | ###\n{}\n{}\n###".format(uri, meta_data))
 
         ret = self.set_playlist(uri, meta_data)
         if not ret:
-            raise BaseException("play_playlist | Error set_playlist")
+            raise Exception("play_playlist | Error set_playlist")
 
         ret = self.set_playlist_active()
         if not ret:
-            raise BaseException("play_playlist | Error set_playlist_active")
+            raise Exception("play_playlist | Error set_playlist_active")
 
         ret = self.set_play_mode_shuffle_no_repeat()
         if not ret:
@@ -526,14 +524,13 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
     def get_favorites_data(self, favorite_name):
         ret = self.browse("R:0/2")
         if ret == str():
-            raise BaseException("get_favorites_data | Could not retrieve infos regarding favorites.")
+            raise Exception("get_favorites_data | Could not retrieve infos regarding favorites.")
         favorites = self._get_favorites(ret)
         if not favorites:
-            raise BaseException("get_favorites_data | Could not retrieve favorites meta data.")
-            return {}
+            raise Exception("get_favorites_data | Could not retrieve favorites meta data.")
         fav_data = self.get_fav_data(favorites, favorite_name)
         if ("uri" not in fav_data) or ("meta_data" not in fav_data):
-            raise BaseException("get_favorites_data | Favorite '{}' not found".format(favorite_name))
+            raise Exception("get_favorites_data | Favorite '{}' not found".format(favorite_name))
 
         return fav_data
 
@@ -543,7 +540,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         global sonos_system
 
         if 'sonos_system' not in globals():
-            sonos_system = []
+            sonos_system = {}
             self.discovery()
 
         self.get_speaker_data()
@@ -581,13 +578,13 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
                     self.log_msg("on_input_value | Error with radio input. Is empty. Check input value!")
                     return
 
-                    fav_data = self.get_favorites_data(value)
-                    if fav_data == {}:
-                        return
+                fav_data = self.get_favorites_data(value)
+                if fav_data == {}:
+                    return
 
-                    uri = fav_data["uri"]
-                    meta_data = fav_data["meta_data"]
-                    self.play_radio(uri, meta_data)
+                uri = fav_data["uri"]
+                meta_data = fav_data["meta_data"]
+                self.play_radio(uri, meta_data)
 
             elif index == self.PIN_I_NVOLUME:
                 if int(value) > 0 or int(value) < 100:
