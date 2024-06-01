@@ -1,7 +1,7 @@
 # SONOS Speaker (14404)
 
-## Voraussetzungen
-HSL 2.0.4
+## Beschreibung
+Logikbaustein zur Steuerung von SONOS-Lautsprechern.
 
 ## Installation
 Die .hslz Datei mit dem Gira Experte importieren. Das Logikmodul ist dann in der Rubrik "Datenaustausch" verfügbar.
@@ -23,9 +23,9 @@ Die .hslz Datei mit dem Gira Experte importieren. Das Logikmodul ist dann in der
 ## Ausgänge
 Alle Ausgänge sind Send-by-Change ausgeführt.
 
-| Nr. | Ausgang | Initwert | Beschreibung                                                    |
-|-----|---------|----------|-----------------------------------------------------------------|
-| 1   | Debug   | 0        | Success = 1 / Failure = 0 für die Ausführung der letzten Aktion |
+| Nr. | Ausgang | Initwert | Beschreibung                                                                                                                                                                      |
+|-----|---------|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1   | Debug   | 0        | For debugging during development only. Will output the sum of all received http return codes if `self.debugging = True`. This can only be set within the development environment. |
 
 
 ## Sonstiges
@@ -39,8 +39,7 @@ Alle Ausgänge sind Send-by-Change ausgeführt.
 See [release notes](https://github.com/En3rGy/14404_SONOS/releases)
 
 ### Open Issues / Known Bugs
-
-
+x
 
 ### Support
 
@@ -58,14 +57,13 @@ Der Code des Bausteins befindet sich in der hslz Datei oder auf [github](https:/
 - Python editor [PyCharm](https://www.jetbrains.com/pycharm/)
 - [Gira Homeserver Interface Information](http://www.hs-help.net/hshelp/gira/other_documentation/Schnittstelleninformationen.zip)
 
-## Anforderungen
+### Anforderungen
+x
 
+### Software Design Description
+x
 
-## Software Design Description
-
-
-
-## Validierung und Verifikation
+### Validierung und Verifikation
 
 - Unit Tests
 

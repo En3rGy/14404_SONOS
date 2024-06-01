@@ -25,6 +25,7 @@ class TestSequenceFunctions(unittest.TestCase):
             self.cred = json.load(f)
 
         self.tst = SONOSSpeaker_14404_14404(0)
+        self.tst.debugging = True
         self.tst.debug_input_value[self.tst.PIN_I_RINCON] = self.cred["ROOM1"]
 
         self.tst.on_init()
@@ -54,19 +55,22 @@ class TestSequenceFunctions(unittest.TestCase):
         fav = "Bayern 3 Radio"
         self.tst.debug_input_value[self.tst.PIN_I_SRADIO] = fav
         self.tst.on_input_value(self.tst.PIN_I_SRADIO, fav)
+        self.assertEqual(self.tst.debug_output_value[self.tst.PIN_O_OUT], 600)
 
     def test_nas_song(self):
         fav = "In My Mind"
         # fav = "God Rest Ye Merry Gentlemen"
         self.tst.debug_input_value[self.tst.PIN_I_SPLAYLIST] = fav
         self.tst.on_input_value(self.tst.PIN_I_SPLAYLIST, fav)
+        self.assertEqual(self.tst.debug_output_value[self.tst.PIN_O_OUT], 1400)
 
     def test_volume(self):
         self.tst.on_input_value(self.tst.PIN_I_NVOLUME, 5)
-        self.assertTrue(self.tst.debug_output_value[self.tst.PIN_O_OUT])
+        self.assertEqual(self.tst.debug_output_value[self.tst.PIN_O_OUT], 200)
 
     def test_pause(self):
         self.tst.pause()
+        self.assertEqual(self.tst.debug_output_value[self.tst.PIN_O_OUT], 200)
 
 
 if __name__ == '__main__':

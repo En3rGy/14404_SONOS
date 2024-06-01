@@ -33,6 +33,9 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 ###################################################################################################!!!##
 
         self.speaker = SonosPlayer()
+        # `self.code_sum` used to sum all received http return codes since init **if** `self.debugging == True`.
+        self.code_sum = 0
+        self.debugging = False
 
     def set_output_value_sbc(self, pin, val):
         if pin in self.g_out_sbc:
@@ -127,8 +130,8 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 
         sock.close()
 
-        self.log_msg("Discovered {} SONOS devices: {}".format(len(sonos_system.keys()),
-                                                              ", ".join(sonos_system[rincon].name for rincon in sonos_system.keys())))
+        self.log_data("Discovered SONOS devices",
+                      "{}".format(", ".join(sonos_system[rincon].name for rincon in sonos_system.keys())))
 
     def get_speaker_data(self):
         """
@@ -175,6 +178,9 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         :rtype: str
         """
         print("Entering http_put...")
+
+        attempt = 0
+        max_attempts = 2
         http_client = None
 
         ip = self.speaker.ip
@@ -185,36 +191,43 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         if port == str():
             self.get_speaker_data()
 
-        try:
-            headers = {"CONNECTION": "close",
-                       "HOST": "{}:{}".format(ip, port),
-                       "CONTENT-LENGTH": str(len(payload)),
-                       "Content-type": 'text/xml; charset="utf-8"',
-                       "SOAPACTION": api_action}
-            http_client = httplib.HTTPConnection(ip, int(port), timeout=5)
-            http_client.request("POST", api_path, payload, headers)
-            response = http_client.getresponse()
-            status = response.status
-            data = response.read()
+        while attempt < max_attempts:
+            try:
+                headers = {"CONNECTION": "close",
+                           "HOST": "{}:{}".format(ip, port),
+                           "CONTENT-LENGTH": str(len(payload)),
+                           "Content-type": 'text/xml; charset="utf-8"',
+                           "SOAPACTION": api_action}
+                http_client = httplib.HTTPConnection(ip, int(port), timeout=5)
+                http_client.request("POST", api_path, payload, headers)
+                response = http_client.getresponse()
+                status = response.status
+                data = response.read()
 
-            if str(status) != '200':
-                upnp_error = re.search("<errorCode>(.*?)</errorCode>", data, re.MULTILINE)
-                if upnp_error is not None:
-                    raise Exception('http_put | Http status {}, upnp error code {} for {}'.format(status,
-                                                                                        upnp_error.group(1),
-                                                                                        api_action))
+                if isinstance(status, (int, float)) and self.debugging:
+                    self.code_sum = self.code_sum + int(status)
+                    self._set_output_value(self.PIN_O_OUT, self.code_sum)
+
+                if str(status) != '200':
+                    upnp_error = re.search("<errorCode>(.*?)</errorCode>", data, re.MULTILINE)
+                    if upnp_error is not None:
+                        raise Exception('http_put | Http status {}, '
+                                        'upnp error code {} for {}'.format(status, upnp_error.group(1), api_action))
+                    else:
+                        raise Exception("http_put |Http status {} for {}".format(status, api_action))
                 else:
-                    raise Exception("http_put |Http status {} for {}".format(status, api_action))
-            else:
-                self.log_msg('http_put | Http status {}'.format(status))
+                    self.log_msg('http_put | Http status {}'.format(status))
+                break  # no exception, so break loop
 
-        except Exception as e:
-            self.discovery() #  try to update data
-            # todo Give it one more try before raising the exception?
-            raise Exception("http_put | Exception: '{}' for {}".format(e, api_action))
-        finally:
-            if http_client:
-                http_client.close()
+            except Exception as e:
+                attempt += 1
+                if attempt < max_attempts:
+                    self.discovery() #  try to update data
+                else:
+                    raise Exception("http_put | Exception: '{}' for {}".format(e, api_action))
+            finally:
+                if http_client:
+                    http_client.close()
 
         return data
 
@@ -543,7 +556,10 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
             sonos_system = {}
             self.discovery()
 
-        self.get_speaker_data()
+        try:
+            self.get_speaker_data()
+        except Exception as e:
+            self.log_msg(e)
 
     def on_input_value(self, index, value):
 
