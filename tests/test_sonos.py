@@ -32,8 +32,8 @@ class TestSequenceFunctions(unittest.TestCase):
 
     def test_discovery(self):
         global sonos_system
-        for speaker in sonos_system:
-            print (speaker)
+        for rincon in sonos_system:
+            print str(sonos_system[rincon])
 
     def test_init_and_discovery(self):
         self.assertTrue(self.tst.speaker.rincon != str())

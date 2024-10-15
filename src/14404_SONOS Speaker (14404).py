@@ -224,6 +224,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
                 if attempt < max_attempts:
                     self.discovery() #  try to update data
                 else:
+                    self.discovery()  # try to update data
                     raise Exception("http_put | Exception: '{}' for {}".format(e, api_action))
             finally:
                 if http_client:
@@ -638,7 +639,9 @@ class SonosPlayer:
         self.name = str()
 
     def __str__(self):
-        return self.name
+        # print("Entering SonosPlayer::__str__...")
+        data = { "name": self.name, "ip": self.ip, "rincon": self.rincon, "port": self.port}
+        return str(data)
 
     def read_device(self, xml_device_root):
         # print("Entering SonosPlayer::read_device...")
