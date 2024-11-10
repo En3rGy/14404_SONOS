@@ -3,6 +3,7 @@ import json
 import time
 import unittest
 import logging
+from time import sleep
 
 ################################
 # get the code
@@ -27,13 +28,14 @@ class TestSequenceFunctions(unittest.TestCase):
         self.tst = SONOSSpeaker_14404_14404(0)
         self.tst.debugging = True
         self.tst.debug_input_value[self.tst.PIN_I_RINCON] = self.cred["ROOM1"]
+        # self.tst.debug_input_value[self.tst.PIN_I_RINCON] = self.cred["Wohnzimmer_Fehler"]
 
         self.tst.on_init()
 
     def test_discovery(self):
         global sonos_system
         for rincon in sonos_system:
-            print str(sonos_system[rincon])
+            print(sonos_system[rincon].print_device())
 
     def test_init_and_discovery(self):
         self.assertTrue(self.tst.speaker.rincon != str())
@@ -57,6 +59,15 @@ class TestSequenceFunctions(unittest.TestCase):
         self.tst.on_input_value(self.tst.PIN_I_SRADIO, fav)
         self.assertEqual(self.tst.debug_output_value[self.tst.PIN_O_OUT], 600)
 
+    def test_radio_wz(self):
+        fav = "Bayern 3 Radio"
+        self.tst.debug_input_value[self.tst.PIN_I_RINCON] = self.cred["Wohnzimmer_Fehler"]
+        self.tst.on_init()
+
+        self.tst.debug_input_value[self.tst.PIN_I_SRADIO] = fav
+        self.tst.on_input_value(self.tst.PIN_I_SRADIO, fav)
+        self.assertEqual(self.tst.debug_output_value[self.tst.PIN_O_OUT], 600)
+
     def test_nas_song(self):
         fav = "In My Mind"
         # fav = "God Rest Ye Merry Gentlemen"
@@ -72,6 +83,19 @@ class TestSequenceFunctions(unittest.TestCase):
         self.tst.pause()
         self.assertEqual(self.tst.debug_output_value[self.tst.PIN_O_OUT], 200)
 
+    def test_multi(self):
+        fav = "Bayern 3 Radio"
+        self.tst.debug_input_value[self.tst.PIN_I_RINCON] = self.cred["ROOM1"]
+        self.tst.on_init()
+
+        self.tst.debug_input_value[self.tst.PIN_I_SRADIO] = fav
+        self.tst.on_input_value(self.tst.PIN_I_SRADIO, fav)
+
+        print("\n\n# Waiting...")
+        sleep(20)
+        print("# Continue...\n\n")
+
+        self.tst.pause()
 
 if __name__ == '__main__':
     logging.basicConfig()

@@ -1,7 +1,11 @@
 # coding: UTF-8
 import httplib
+import json
 import socket
 import urllib2
+from datetime import datetime
+from stringold import replace
+
 import xml.etree.ElementTree as ET
 import urlparse
 import threading
@@ -35,6 +39,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         self.speaker = SonosPlayer()
         # `self.code_sum` used to sum all received http return codes since init **if** `self.debugging == True`.
         self.code_sum = 0
+        self.g_out_sbc = {}
         self.debugging = False
 
     def set_output_value_sbc(self, pin, val):
@@ -146,7 +151,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
             raise Exception("get_speaker_data | RINCON input has wrong format. Is {} "
                             "but expecting e.g. RINCON_347E5CF2520201400".format(rincon))
         # else:
-        #     print("DEBUG | RINCON {} is valid.".format(rincon))
+        #     print("# DEBUG | RINCON {} is valid.".format(rincon))
 
         global sonos_system
         if 'sonos_system' not in globals():
@@ -164,6 +169,10 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         self.log_data("RINCON", self.speaker.rincon)
         self.log_data("Location", self.speaker.location)
 
+    def data_dump(self):
+        now = datetime.now()
+        self.log_data("data dump", "{}\n".format(now.isoformat()))
+
     def _http_put(self, api_path, api_action, payload):
         """
         Perform an HTTP PUT request.
@@ -177,58 +186,50 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         :return: The response data from the server. str() in case of error.
         :rtype: str
         """
-        print("Entering http_put...")
+        if self.debugging:
+            print("# DEBUG | Entering _http_put...")
+            print("# DEBUG | _http_put | self.speaker = {}".format(self.speaker.print_device()))
 
-        attempt = 0
-        max_attempts = 2
-        http_client = None
-
-        ip = self.speaker.ip
-        port = self.speaker.port
-
-        if ip == str():
+        if self.speaker.ip == str():
             self.discovery()
-        if port == str():
+        if self.speaker.port == str():
             self.get_speaker_data()
 
-        while attempt < max_attempts:
-            try:
-                headers = {"CONNECTION": "close",
-                           "HOST": "{}:{}".format(ip, port),
-                           "CONTENT-LENGTH": str(len(payload)),
-                           "Content-type": 'text/xml; charset="utf-8"',
-                           "SOAPACTION": api_action}
-                http_client = httplib.HTTPConnection(ip, int(port), timeout=5)
-                http_client.request("POST", api_path, payload, headers)
-                response = http_client.getresponse()
-                status = response.status
-                data = response.read()
+        headers = {"CONNECTION": "close",
+                   "HOST": "{}:{}".format(self.speaker.ip, self.speaker.port),
+                   "CONTENT-LENGTH": str(len(payload)),
+                   "Content-type": 'text/xml; charset="utf-8"',
+                   "SOAPACTION": api_action}
 
-                if isinstance(status, (int, float)) and self.debugging:
-                    self.code_sum = self.code_sum + int(status)
-                    self._set_output_value(self.PIN_O_OUT, self.code_sum)
+        try:
+            http_client = httplib.HTTPConnection(self.speaker.ip, int(self.speaker.port), timeout=5)
+        except Exception as e:
+            raise Exception("http_put | Exception with httplib.HTTPConnection: {} for speaker {}".format(e, self.speaker.print_device()))
 
-                if str(status) != '200':
-                    upnp_error = re.search("<errorCode>(.*?)</errorCode>", data, re.MULTILINE)
-                    if upnp_error is not None:
-                        raise Exception('http_put | Http status {}, '
-                                        'upnp error code {} for {}'.format(status, upnp_error.group(1), api_action))
-                    else:
-                        raise Exception("http_put |Http status {} for {}".format(status, api_action))
-                else:
-                    self.log_msg('http_put | Http status {}'.format(status))
-                break  # no exception, so break loop
+        try:
+            http_client.request("POST", api_path, payload, headers)
+            response = http_client.getresponse()
+        except Exception as e:
+            raise Exception("http_put | Exception while request processing: {} for speaker {}".format(e, self.speaker.print_device()))
 
-            except Exception as e:
-                attempt += 1
-                if attempt < max_attempts:
-                    self.discovery() #  try to update data
-                else:
-                    self.discovery()  # try to update data
-                    raise Exception("http_put | Exception: '{}' for {}".format(e, api_action))
-            finally:
-                if http_client:
-                    http_client.close()
+        status = response.status
+        data = response.read()
+
+        if int(status) != 200:
+            upnp_error = re.search("<errorCode>(.*?)</errorCode>", data, re.MULTILINE)
+            if upnp_error is not None:
+                raise Exception('http_put | Http status {}, '
+                                'upnp error code {} for {} with speaker {}'.format(status, upnp_error.group(1), api_action, self.speaker.print_device()))
+            else:
+                raise Exception("http_put |Http status {} for {} with speaker {}".format(status, api_action, self.speaker.print_device()))
+
+        self.log_msg('http_put | Http status {}'.format(status))
+        if self.debugging:
+            self.code_sum = self.code_sum + status
+            self.set_output_value_sbc(self.PIN_O_OUT, self.code_sum)
+
+        if http_client:
+            http_client.close()
 
         return data
 
@@ -616,7 +617,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 
                 self.join_rincon(self._get_input_value(self.PIN_I_SJOINRINCON))
         except Exception as e:
-            self.log_msg(e)
+            self.log_msg("on_input_value | {}".format(e))
 
 def get_data_str(command):
     data = '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" ' \
@@ -643,9 +644,14 @@ class SonosPlayer:
         data = { "name": self.name, "ip": self.ip, "rincon": self.rincon, "port": self.port}
         return str(data)
 
+    def print_device(self):
+        device = {"location": self.location, "ip": self.ip, "rincon": self.rincon, "port": self.port, "services": self.services, "name": self.name}
+        return json.dumps(device)
+
     def read_device(self, xml_device_root):
         # print("Entering SonosPlayer::read_device...")
         device_dict = {}
+
         for device in xml_device_root.findall("{urn:schemas-upnp-org:device-1-0}device"):
             udn = device.findtext("{urn:schemas-upnp-org:device-1-0}UDN")
             device_dict[udn] = {}
@@ -653,17 +659,16 @@ class SonosPlayer:
             device_dict[udn]["roomName"] = device.findtext("{urn:schemas-upnp-org:device-1-0}roomName")
             device_dict[udn]["modelName"] = device.findtext("{urn:schemas-upnp-org:device-1-0}modelName")
 
-            if device_dict[udn]["roomName"] is None:
-                # Valid for Media Renderer oder Media Server devices
-                continue
-
-            self.name = "{}: {} ({})".format(device_dict[udn]["modelName"], device_dict[udn]["roomName"], self.rincon)
-            icon = device.find("{urn:schemas-upnp-org:device-1-0}iconList")
-            if icon is not None:
-                icon = icon.find("{urn:schemas-upnp-org:device-1-0}icon")
-                device_dict[udn]["icon_url"] = icon.findtext("{urn:schemas-upnp-org:device-1-0}url")
+            # Valid for Media Renderer oder Media Server devices
+            if device_dict[udn]["roomName"] is not None:
+                self.name = "{}: {} ({})".format(device_dict[udn]["modelName"], device_dict[udn]["roomName"], self.rincon)
+                icon = device.find("{urn:schemas-upnp-org:device-1-0}iconList")
+                if icon is not None:
+                    icon = icon.find("{urn:schemas-upnp-org:device-1-0}icon")
+                    device_dict[udn]["icon_url"] = icon.findtext("{urn:schemas-upnp-org:device-1-0}url")
 
             service_list = device.find("{urn:schemas-upnp-org:device-1-0}serviceList")
+            if service_list is  None: service_list = device.find("serviceList")
             if service_list is not None:
                 for service in service_list.findall("{urn:schemas-upnp-org:device-1-0}service"):
                     service_id = service.findtext("{urn:schemas-upnp-org:device-1-0}serviceId")
@@ -675,11 +680,21 @@ class SonosPlayer:
                     device_dict[udn][service_id]["service_type"] = \
                         service.findtext("{urn:schemas-upnp-org:device-1-0}serviceType")
 
+                    self.services[service_id] = device_dict[udn][service_id]
+            else:
+                print("# DEBUG | read_device | service_list is empty.")
+
             device_list = device.find("{urn:schemas-upnp-org:device-1-0}deviceList")
+            if device_list is None: device_list = device.find("deviceList")
             if device_list is not None:
                 child_device_dict = self.read_device(device_list)
                 for child in child_device_dict.keys():
                     device_dict[udn][child] = child_device_dict[child]
+
+                    for key in device_dict[udn][child].keys():
+                        if "urn:upnp-org:" in key:
+                            device_dict[udn][key] = device_dict[udn][child][key]
+                            self.services[key] = device_dict[udn][key]
 
         return device_dict
 
@@ -690,16 +705,24 @@ class SonosPlayer:
         :param path:
         :return:
         """
+        # print("# DEBUG | Entering get_data...")
         # print("Entering SonosPlayer::get_data...")
         if path is str():
             path = self.location
 
         try:
             response = urllib2.urlopen(path)
-            data = response.read()
+            content_type = response.headers.get('Content-Type')
+            charset = 'utf-8'  # Standard-Charset annehmen
 
-            xml_root = ET.fromstring(data)
+            if 'charset=' in content_type:
+                charset = content_type.split('charset=')[-1]
+
+            data = response.read().decode(charset)
+            xml_root = ET.fromstring(data.encode('ascii', "replace"))
             self.read_device(xml_root)
+
+            # BUG | get_data | Got data for {}".format(self.rincon))
 
         except Exception as e:
             print("get_data | Error: {}".format(e))
