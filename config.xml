@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
     <modules>
-        <module category="Sonos" context="14404_SonosSpeaker" id="14404" name="SONOS Speaker (14404)" version="0.9">
+        <module category="Sonos" context="14404_SonosSpeaker" id="14404" name="SONOS Speaker (14404)" version="0.10">
             <inputs>
                 <input type="string" const_name="rincon" init_value="">Speaker RINCON</input>
  				<input type="number" const_name="nVolume" init_value="0">Volume</input>
@@ -10,6 +10,7 @@
                 <input type="number" const_name="bNext" init_value="0">Next</input>
 				<input type="string" const_name="sPlaylist" init_value="">Playlist</input>
 				<input type="string" const_name="sRadio" init_value="">Radio</input>
+                <input type="string" const_name="uri" init_value="">URI</input>
 				<input type="string" const_name="sJoinRincon" init_value="0">Join RINCON</input>
             </inputs>
             <outputs>

@@ -27,10 +27,32 @@ class TestSequenceFunctions(unittest.TestCase):
 
         self.tst = SONOSSpeaker_14404_14404(0)
         self.tst.debugging = True
-        self.tst.debug_input_value[self.tst.PIN_I_RINCON] = self.cred["ROOM1"]
+        self.tst.debug_input_value[self.tst.PIN_I_RINCON] = self.cred["Roam"]  ## ["Buro"]
         # self.tst.debug_input_value[self.tst.PIN_I_RINCON] = self.cred["Wohnzimmer_Fehler"]
 
         self.tst.on_init()
+
+    def test_encode(self):
+        val = self.tst._unencode("&lt;DIDL-Litexmlns:dc=&quot;http://purl.org/dc/elements/1.1/&quot;xmlns:upnp=&quot;urn:schemas-upnp-org:metadata-1-0/upnp/&quot;xmlns:r=&quot;urn:schemas-rinconnetworks-com:metadata-1-0/&quot;xmlns=&quot;urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/&quot;&gt;&lt;item id=&quot;S://192.168.143.1/fritz.nas/Kiefer_Gruen/media/Audio/tng_red_alert1.mp3&quot; parentID=&quot;S://192.168.143.1/fritz.nas/Kiefer_Gruen/media/Audio&quot; restricted=&quot;true&quot;&gt;&lt;dc:title&gt;tng_red_alert1.mp3&lt;/dc:title&gt;&lt;upnp:class&gt;object.item.audioItem.musicTrack&lt;/upnp:class&gt;&lt;upnp:albumArtURI&gt;/getaa?u=x-file-cifs%3a%2f%2f192.168.143.1%2ffritz.nas%2fKiefer_Gruen%2fmedia%2fAudio%2ftng_red_alert1.mp3&amp;amp;v=2103&lt;/upnp:albumArtURI&gt;&lt;r:description&gt;//192.168.143.1/fritz.nas/Kiefer_Gruen/media/Audio&lt;/r:description&gt;&lt;desc id=&quot;cdudn&quot; nameSpace=&quot;urn:schemas-rinconnetworks-com:metadata-1-0/&quot;&gt;RINCON_AssociatedZPUDN&lt;/desc&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;")
+        print val
+
+    def test_repeat_mode(self):
+        self.tst.set_play_mode_repeat()
+
+    def test_uri(self):
+        print("# DEBUG | Entering test_uri")
+        path = "192.168.143.1/fritz.nas/Kiefer_Gruen/media/Audio"
+        file_name = "ding.mp3"
+        uri = "x-file-cifs://{}/{}".format(path, file_name)
+
+        self.tst.play_uri(uri, '')
+
+        ###############
+
+        print("# DEBUG | Leaving test_uri")
+
+    def test_join(self):
+        self.tst.join_rincon("RINCON_347E5CF2520201400")
 
     def test_discovery(self):
         global sonos_system

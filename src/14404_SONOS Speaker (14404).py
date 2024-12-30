@@ -29,7 +29,8 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         self.PIN_I_BNEXT=5
         self.PIN_I_SPLAYLIST=6
         self.PIN_I_SRADIO=7
-        self.PIN_I_SJOINRINCON=8
+        self.PIN_I_URI=8
+        self.PIN_I_SJOINRINCON=9
         self.PIN_O_OUT=1
 
 ########################################################################################################
@@ -199,7 +200,9 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
                    "HOST": "{}:{}".format(self.speaker.ip, self.speaker.port),
                    "CONTENT-LENGTH": str(len(payload)),
                    "Content-type": 'text/xml; charset="utf-8"',
-                   "SOAPACTION": api_action}
+                   "SOAPACTION": api_action,
+                   "X-SONOS-TARGET-UDN": "uuid:" + self.speaker.rincon,
+                   "ACCEPT-ENCODING": "gzip"}
 
         try:
             http_client = httplib.HTTPConnection(self.speaker.ip, int(self.speaker.port), timeout=5)
@@ -207,6 +210,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
             raise Exception("http_put | Exception with httplib.HTTPConnection: {} for speaker {}".format(e, self.speaker.print_device()))
 
         try:
+            print("### DEBUG | _http_play | payload : {}".format(payload))
             http_client.request("POST", api_path, payload, headers)
             response = http_client.getresponse()
         except Exception as e:
@@ -285,6 +289,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         result = result.replace('&quot;', '"')
         result = result.replace('&apos;', "'")
         result = result.replace('&amp;', '&')
+        # result = result.replace('%2f;', '/')
         return result
 
     def _encode(self, text):
@@ -294,6 +299,8 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         result = result.replace('>', '&gt;')
         result = result.replace('"', '&quot;')
         result = result.replace("'", '&apos;')
+        # result = result.replace('/', '%2f')
+        # result = result.replace('/', '%2f')
         return result
 
     def _get_favorites(self, data):
@@ -368,7 +375,21 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
 
         return self.set_av_transport_uri("x-rincon-queue:{}#0".format(self.speaker.rincon), str()) != str()
 
-    # Playlist Children
+    def get_meta_data(self, path, file):
+        # path = e.g. '192.168.0.100/nas/media/Audio'
+        # file = e.g. 'file.mp3'
+
+        meta_data = '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/"xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/"xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">'
+        meta_data = meta_data + '<item id="S://{path}/{file}" parentID="S://{path}" restricted="true">'.format(path=path, file=file)
+        meta_data = meta_data + '<dc:title>{}</dc:title>'.format(file)
+        meta_data = meta_data + '<upnp:class>object.item.audioItem.musicTrack</upnp:class>'
+        meta_data = meta_data + '<upnp:albumArtURI>/getaa?u=x-file-cifs%3a%2f%2f{}&amp;amp;v=2103</upnp:albumArtURI>'.format((self._encode(path + '/' + file)).replace('/', '%2f'))
+        meta_data = meta_data + '<r:description>//{}</r:description>'.format(path)
+        meta_data = meta_data + '<desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">RINCON_AssociatedZPUDN</desc></item></DIDL-Lite>'
+
+        return meta_data
+
+        # Playlist Children
     def set_playlist(self, uri, meta_data):
         """
         :return: True if server request successfully.
@@ -384,6 +405,20 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
                             '<DesiredFirstTrackNumberEnqueued>1</DesiredFirstTrackNumberEnqueued>'
                             '<EnqueueAsNext>1</EnqueueAsNext>'
                             '</u:AddURIToQueue>'.format(uri, meta_data))
+
+        return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data) != str()
+
+    def set_play_mode_repeat(self):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering set_play_mode_repeat...")
+        api_action = '"urn:schemas-upnp-org:service:AVTransport:1#SetPlayMode"'
+        data = get_data_str('<u:SetPlayMode xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
+                            '<InstanceID>0</InstanceID>'
+                            '<NewPlayMode>REPEAT_ONE</NewPlayMode>'
+                            '</u:SetPlayMode>')
 
         return self._http_put("/MediaRenderer/AVTransport/Control", api_action, data) != str()
 
@@ -497,6 +532,29 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         self.set_av_transport_uri(uri, uri_meta_data)
         return self.play()
 
+    def play_uri(self, uri, meta_data):
+        """
+        :return: True if server request successfully.
+        :rtype: bool
+        """
+        print("Entering play_uri...")
+        ret = self.clear_queue()
+        if not ret:
+            raise Exception("play_uri | Error clear_queue")
+
+        print("play_uri | ###\n{}\n{}\n###".format(uri, meta_data))
+
+        ret = self.set_av_transport_uri(uri, meta_data)
+        if not ret:
+            raise Exception("play_uri | Error set_av_transport_uri")
+
+        ret = self.set_play_mode_repeat()
+        if not ret:
+            return False
+
+        return self.play()
+
+
     def play_playlist(self, uri, meta_data):
         """
         :return: True if server request successfully.
@@ -533,8 +591,7 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
         :rtype: bool
         """
         print("Entering join_rincon...")
-        self.set_av_transport_uri("x-rincon:RINCON_{}".format(rincon), str())
-        return self.play()
+        return self.set_av_transport_uri("x-rincon:{}".format(rincon), str())
 
     def get_favorites_data(self, favorite_name):
         ret = self.browse("R:0/2")
@@ -590,6 +647,13 @@ class SONOSSpeaker_14404_14404(hsl20_4.BaseModule):
                 uri = fav_data["uri"]
                 meta_data = fav_data["meta_data"]
                 self.play_playlist(uri, meta_data)
+
+            elif index == self.PIN_I_URI:
+                if value == str():
+                    self.log_msg("on_input_value | Error with radio input. Is empty. Check input value!")
+                    return
+
+                self.play_uri(value, "")
 
             elif index == self.PIN_I_SRADIO:
                 if value == str():
